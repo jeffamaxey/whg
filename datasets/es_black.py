@@ -25,13 +25,18 @@ def indexDataset():
   import codecs
   dataset = input('dataset: ')
   qs = Place.objects.all().filter(dataset_id=dataset)
-  f_err_multi = codecs.open('../_notes/err_multiparent_'+dataset+'.txt', mode='w', encoding='utf8')
-  f_err_geom = codecs.open('../_notes/err_geom_'+dataset+'.txt', mode='w', encoding='utf8')
+  f_err_multi = codecs.open(f'../_notes/err_multiparent_{dataset}.txt',
+                            mode='w',
+                            encoding='utf8')
+  f_err_geom = codecs.open(f'../_notes/err_geom_{dataset}.txt',
+                           mode='w',
+                           encoding='utf8')
   count = 0
   multiparents=[]
   errors=[]
   # get last whg_id
-  whg_id = maxID(es); print('max whg_id:',whg_id)  
+  whg_id = maxID(es)
+  print('max whg_id:',whg_id)  
 
   [count_seeds,count_kids,i] = [0,0,0]
   for place in qs:
@@ -53,7 +58,7 @@ def indexDataset():
       parent_obj['whg_id'] = whg_id
       # add its own names to the suggest field
       for n in parent_obj['names']:
-        parent_obj['suggest']['input'].append(n['toponym']) 
+        parent_obj['suggest']['input'].append(n['toponym'])
       # index it
       try:
         res = es.index(index=idx, doc_type='place', id=whg_id, body=json.dumps(parent_obj))
@@ -61,9 +66,7 @@ def indexDataset():
       except:
         #print('failed indexing '+str(place.id), parent_obj)
         f_err_geom.write(str({"pid":place.id, "title":place.title, "matches":matches})+'\n')
-        #errors.append({"pid":str(place.id), "pobj":parent_obj})
-        pass
-        #sys.exit(sys.exc_info())                
+              #sys.exit(sys.exc_info())                
     else:
       # 1 or more matches, it's a child
       # TODO: can't have 2 parents though!!!!
@@ -77,9 +80,9 @@ def indexDataset():
         try:
           res = es.index(index=idx,doc_type='place',id=place.id,
                          routing=1,body=json.dumps(child_obj))
-          count_kids +=1                
+          count_kids +=1
         except:
-          print('failed indexing '+str(place.id), child_obj)
+          print(f'failed indexing {str(place.id)}', child_obj)
           sys.exit(sys.exc_info())
 
         # add its id, names to parent's children, suggest
@@ -95,13 +98,15 @@ def indexDataset():
         try:
           es.update_by_query(index=idx,doc_type='place',body=q_update)
         except:
-          print('failed updating '+place.title+'('+str(pid)+') from child '+str(place.id))
+          print(f'failed updating {place.title}({str(pid)}) from child {str(place.id)}')
           print(count_kids-1)
           sys.exit(sys.exc_info())
 
-  print(multiparents)                    
-  print(errors)                    
-  print(str(count_seeds)+' fresh records added, '+str(count_kids)+' child records added')
+  print(multiparents)
+  print(errors)
+  print(
+      f'{str(count_seeds)} fresh records added, {str(count_kids)} child records added'
+  )
   f_err_geom.close()
   f_err_multi.close()
 

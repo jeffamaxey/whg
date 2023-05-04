@@ -23,8 +23,7 @@ from datasets.utils import *
 
 def link_uri(auth,id):
   baseuri = AUTHORITY_BASEURI[auth]
-  uri = baseuri + str(id)
-  return uri
+  return baseuri + str(id)
 
 # create place_name, place_geom, place_description records as req.
 def augmenter(placeid, auth, tid, hitjson):
@@ -32,50 +31,55 @@ def augmenter(placeid, auth, tid, hitjson):
   task = get_object_or_404(TaskResult, task_id=tid)
   kwargs=json.loads(task.task_kwargs.replace("\'", "\""))
   print('augmenter params:',type(place), auth, hitjson)
-  if auth == 'align_tgn':
-    source = get_object_or_404(Source, src_id="getty_tgn")
-    # don't add place_geom record unless flagged in task
-    if 'location' in hitjson.keys() and kwargs['aug_geom'] == 'on':
-      geojson=hitjson['location']
-      # add geowkt and citation{id,label}
-      geojson['geowkt']='POINT('+str(geojson['coordinates'][0])+' '+str(geojson['coordinates'][0])+')'
-      geojson['citation']={
-        "id": "tgn:"+hitjson['tgnid'],
-              "label":"Getty TGN"
-      }
-      geom = PlaceGeom.objects.create(
-        json = geojson,
-              # json = hitjson['location'],
-                geom_src = source,
-                place_id = place,
-          task_id = tid
-      )
-    # TODO: bulk_create??
-    if len(hitjson['names']) > 0:
-      for name in hitjson['names']:
-        # toponym,lang,citation,when
-        place_name = PlaceName.objects.create(
-          toponym = name['name'] + ('' if name['lang'] == None else '@'+name['lang']) ,
-                  json = {
-                      "toponym": name['name'] + ('' if name['lang'] == None else '@'+name['lang']),
-                      "citation": {"id": "tgn:"+hitjson['tgnid'], "label": "Getty TGN"}
-                },
-                    place_id = place,
-                    task_id = tid
-        )
-    if hitjson['note'] != None:
-      # @id,value,lang
-      descrip = PlaceDescription.objects.create(
-        json = {
-                "@id": 'tgn:'+hitjson['tgnid'],
-                  "value": hitjson['note'],
-                    "lang": "en"
-              },
-              place_id = place,
-                task_id = tid
-      )
-  else:
+  if auth != 'align_tgn':
     return
+  source = get_object_or_404(Source, src_id="getty_tgn")
+  # don't add place_geom record unless flagged in task
+  if 'location' in hitjson.keys() and kwargs['aug_geom'] == 'on':
+    geojson=hitjson['location']
+    # add geowkt and citation{id,label}
+    geojson['geowkt']='POINT('+str(geojson['coordinates'][0])+' '+str(geojson['coordinates'][0])+')'
+    geojson['citation']={
+      "id": "tgn:"+hitjson['tgnid'],
+            "label":"Getty TGN"
+    }
+    geom = PlaceGeom.objects.create(
+      json = geojson,
+            # json = hitjson['location'],
+              geom_src = source,
+              place_id = place,
+        task_id = tid
+    )
+    # TODO: bulk_create??
+  if len(hitjson['names']) > 0:
+    for name in hitjson['names']:
+        # toponym,lang,citation,when
+      place_name = PlaceName.objects.create(
+          toponym=name['name'] +
+          ('' if name['lang'] is None else '@' + name['lang']),
+          json={
+              "toponym":
+              name['name'] +
+              ('' if name['lang'] is None else '@' + name['lang']),
+              "citation": {
+                  "id": "tgn:" + hitjson['tgnid'],
+                  "label": "Getty TGN",
+              },
+          },
+          place_id=place,
+          task_id=tid,
+      )
+  if hitjson['note'] != None:
+    # @id,value,lang
+    descrip = PlaceDescription.objects.create(
+      json = {
+              "@id": 'tgn:'+hitjson['tgnid'],
+                "value": hitjson['note'],
+                  "lang": "en"
+            },
+            place_id = place,
+              task_id = tid
+    )
 
 # * 
 # present reconciliation hits for review, execute augmenter() for valid ones
@@ -88,7 +92,7 @@ def review(request, pk, tid, passnum): # dataset pk, celery recon task_id
   # filter place records by passnum for those with unreviewed hits on this task
   cnt_pass = Hit.objects.values('place_id').filter(task_id=tid, reviewed=False, query_pass=passnum).count()
   pass_int = int(passnum[4])
-  passnum = passnum if cnt_pass > 0 else 'pass'+str(pass_int+1)
+  passnum = passnum if cnt_pass > 0 else f'pass{str(pass_int + 1)}'
   # [place_id] for places with >0 hits
   hitplaces = Hit.objects.values('place_id').filter(
     task_id=tid,
@@ -104,7 +108,7 @@ def review(request, pk, tid, passnum): # dataset pk, celery recon task_id
 
   # record_list = Place.objects.order_by('title').filter(dataset=ds)
   paginator = Paginator(record_list, 1)
-  page = 1 if not request.GET.get('page') else request.GET.get('page')
+  page = request.GET.get('page') if request.GET.get('page') else 1
   records = paginator.get_page(page)
   count = len(record_list)
 
@@ -114,11 +118,10 @@ def review(request, pk, tid, passnum): # dataset pk, celery recon task_id
   # recon task hits
   raw_hits = Hit.objects.all().filter(place_id=placeid, task_id=tid).order_by('query_pass','-score')
 
-  # convert ccodes to names
-  countries = []
-  for r in records[0].ccodes:
-    countries.append(ccodes[0][r]['gnlabel']+' ('+ccodes[0][r]['tgnlabel']+')')
-
+  countries = [
+      ccodes[0][r]['gnlabel'] + ' (' + ccodes[0][r]['tgnlabel'] + ')'
+      for r in records[0].ccodes
+  ]
   context = {
     'ds_id':pk, 'ds_label': ds.label, 'task_id': tid,
       'hit_list':raw_hits, 'authority': task.task_name[6:],
@@ -165,35 +168,29 @@ def review(request, pk, tid, passnum): # dataset pk, celery recon task_id
             ds.numlinked = ds.numlinked +1
             ds.total_links = ds.total_links +1
             ds.save()
-            
+
             # 
             # augment only for [tgn,dbp,gn,wd]
             if hits[x]['authority'] != 'whg':
               augmenter(placeid, task.task_name, tid, hits[x]['json'])
-            else:
-              # if hit is close or exact, index as child
-              if hits[x]['match'] in ['exact_match','close_match']:
-                print('index '+str(placeid)+' as child of '+str(hits[x]['json']['place_id']))
-              elif hits[x]['match'] == 'related':
-                print('declared related - do what?')
-  
+            elif hits[x]['match'] in ['exact_match','close_match']:
+              print(f'index {str(placeid)} as child of ' + str(hits[x]['json']['place_id']))
+            elif hits[x]['match'] == 'related':
+              print('declared related - do what?')
+
             print('place_id',placeid,
                   'authrecord_id',hits[x]['authrecord_id'],
                   'hit.id',hit.id, type(hit.id))
-            
-          elif hits[x]['match'] == 'none':
+
+          else:
             # make it a new parent unless it's been flagged
-            print('index '+str(placeid)+' as a new parent')
-            #if 'form-0-flag' in formset.data.keys():
-              #print('flag is on, write to a file')
-          
+            print(f'index {str(placeid)} as a new parent')
           # TODO: 
           # set reviewed=True
           matchee = get_object_or_404(Hit, id=hit.id)
           matchee.reviewed = True
           matchee.save()
-        return redirect('/datasets/'+str(pk)+'/review/'+tid+'/'+passnum+'?page='+str(int(page)))
-      # return redirect('/datasets/'+str(pk)+'/review/'+tid+'?page='+str(int(page)+1))
+        return redirect(f'/datasets/{str(pk)}/review/{tid}/{passnum}?page={int(page)}')
       else:
         print('formset is NOT valid')
         #print('formset data:',formset.data)
@@ -202,7 +199,7 @@ def review(request, pk, tid, passnum): # dataset pk, celery recon task_id
         # return redirect('datasets/dashboard.html', permanent=True)
     except:
       sys.exit(sys.exc_info())
-      
+
   return render(request, 'datasets/review.html', context=context)
 
 
@@ -297,7 +294,7 @@ def task_delete(request,tid,scope="foo"):
     tr.delete()
     hits.delete()
 
-  return redirect('/datasets/'+ds+'/detail')
+  return redirect(f'/datasets/{ds}/detail')
 
 
 # better table for viewing datasets
@@ -325,9 +322,6 @@ def ds_insert_lpf(request, pk):
   ds = get_object_or_404(Dataset, id=pk)
   [countrows,countlinked]= [0,0]
   infile = ds.file.open(mode="r")
-  #objs = {"PlaceNames":[], "PlaceTypes":[], "PlaceGeoms":[], "PlaceWhens":[],
-          #"PlaceLinks":[], "PlaceRelated":[], "PlaceDescriptions":[],
-            #"PlaceDepictions":[]}
   with ds.file:
     ds.file.open('rU')
     for row in ds.file:
@@ -348,7 +342,7 @@ def ds_insert_lpf(request, pk):
         ccodes=jrow['properties']['ccodes']
       )
       newpl.save() 
-      
+
       # PlaceName: place_id,src_id,toponym,task_id,json:{toponym, lang,citation,when{}}
       for n in jrow['names']:
         print('from jrow[names]:',n)
@@ -359,7 +353,7 @@ def ds_insert_lpf(request, pk):
           json=n,
           task_id='initial'
         ))
-        
+
       # PlaceType: place_id,src_id,task_id,json:{identifier,label,src_label}
       if 'types' in jrow.keys():
         for t in jrow['types']:
@@ -369,45 +363,45 @@ def ds_insert_lpf(request, pk):
             src_id=newpl.src_id,
             json=t
           ))    
-        
+
       # PlaceWhen: place_id,src_id,task_id,minmax,json:{timespans[],periods[],label,duration}
       if 'whens' in jrow.keys():
         for w in jrow['whens']:
           objs['PlaceWhens'].append(PlaceWhen(
             place_id=newpl,src_id=newpl.src_id,json=w))    
-        
+
       # PlaceGeom: place_id,src_id,task_id,json:{type,coordinates[],when{},geo_wkt,src}
       if 'geometry' in jrow.keys():
         for g in jrow['geometry']['geometries']:
           #print('from jrow[geometry]:',g)
           objs['PlaceGeoms'].append(PlaceGeom(
             place_id=newpl,src_id=newpl.src_id,json=g))    
-        
+
       # PlaceLink: place_id,src_id,task_id,json:{type,identifier}
       if 'links' in jrow.keys():
         for l in jrow['links']:
           if len(jrow['links'])>0: countlinked +=1
           objs['PlaceLinks'].append(PlaceLink(
             place_id=newpl,src_id=newpl.src_id,json=l,task_id='initial'))    
-        
+
       # PlaceRelated: place_id,src_id,task_id,json{relationType,relationTo,label,when{}}
       if 'relations' in jrow.keys():
         for r in jrow['relations']:
           objs['PlaceRelated'].append(PlaceRelated(
             place_id=newpl,src_id=newpl.src_id,json=r))    
-        
+
       # PlaceDescription: place_id,src_id,task_id,json:{@id,value,lang}
       if 'descriptions' in jrow.keys():
         for des in jrow['descriptions']:
           objs['PlaceDescriptions'].append(PlaceDescription(
             place_id=newpl,src_id=newpl.src_id,json=des))    
-        
+
       # PlaceDepiction: place_id,src_id,task_id,json{@id,title,license}
       if 'depictions' in jrow.keys():
         for dep in jrow['depictions']:
           objs['PlaceDepictions'].append(PlaceDepiction(
             place_id=newpl,src_id=newpl.src_id,json=dep))    
-        
+
       print("objs['PlaceNames']",objs['PlaceNames'])
       PlaceName.objects.bulk_create(objs['PlaceNames'])
       PlaceType.objects.bulk_create(objs['PlaceTypes'])
@@ -417,19 +411,20 @@ def ds_insert_lpf(request, pk):
       PlaceRelated.objects.bulk_create(objs['PlaceRelated'])
       PlaceDescription.objects.bulk_create(objs['PlaceDescriptions'])
       PlaceDepiction.objects.bulk_create(objs['PlaceDepictions'])
-    
+
       # write some summary attributes
       ds.numrows = countrows
       ds.numlinked = countlinked
       ds.total_links = len(objs['PlaceLinks'])
       ds.status = 'in_database'
       ds.save()
-      
+
     print('record:', ds.__dict__)
     ds.file.close()   
-    
-  print(str(countrows)+' processed')
-  messages.add_message(request, messages.INFO, 'inserted lpf for '+str(countrows)+' places')  
+
+  print(f'{str(countrows)} processed')
+  messages.add_message(request, messages.INFO,
+                       f'inserted lpf for {str(countrows)} places')
   return redirect('/dashboard')
   
 # insert LP-csv file to database

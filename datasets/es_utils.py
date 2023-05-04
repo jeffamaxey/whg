@@ -16,7 +16,7 @@ def esInit(idx):
         print(ex)
     try:
         es.indices.create(index=idx, ignore=400, body=mappings)
-        print ('index "'+idx+'" created')
+        print(f'index "{idx}" created')
     except Exception as ex:
         print(ex)
 def maxID(es):
@@ -25,8 +25,7 @@ def maxID(es):
        "size": 1  
        }
     res = es.search(index='whg_flat', body=q)
-    maxy = int(res['hits']['hits'][0]['_id'])
-    return maxy
+    return int(res['hits']['hits'][0]['_id'])
 def uriMaker(place):
     from django.shortcuts import get_object_or_404
     from datasets.models import Dataset
@@ -60,10 +59,10 @@ def findMatch(qobj,es):
     return matches
 
 def makeDoc(place,parentid):
-    cc_obj = {
+    return {
         "relation": {},
         "children": [],
-        "suggest": {"input":[]},
+        "suggest": {"input": []},
         "minmax": [],
         "place_id": place.id,
         "dataset": place.dataset.label,
@@ -71,19 +70,18 @@ def makeDoc(place,parentid):
         "title": place.title,
         "uri": uriMaker(place),
         "ccodes": place.ccodes,
-        "names": parsePlace(place,'names'),
-        "types": parsePlace(place,'types'),
-        "geoms": parsePlace(place,'geoms'),
-        "links": parsePlace(place,'links'),
+        "names": parsePlace(place, 'names'),
+        "types": parsePlace(place, 'types'),
+        "geoms": parsePlace(place, 'geoms'),
+        "links": parsePlace(place, 'links'),
         "timespans": [],
-        "descriptions": parsePlace(place,'descriptions'),
-        "depictions": [], 
-        "relations": []
+        "descriptions": parsePlace(place, 'descriptions'),
+        "depictions": [],
+        "relations": [],
     }
-    return cc_obj
 
 def parsePlace(place,attr):
-    qs = eval('place.'+attr+'.all()')
+    qs = eval(f'place.{attr}.all()')
     arr = []
     for obj in qs:
         if attr == 'geoms':
@@ -111,7 +109,6 @@ def deleteDocs(ids):
             es.delete(index='whg', doc_type='place', id=i)
         except:
             print('failed delete for: ',id)
-            pass
         
 def deleteKids(ids):
     from elasticsearch import Elasticsearch
@@ -123,7 +120,7 @@ def deleteKids(ids):
                 "query" : {"terms": {"is_conflation_of.place_id": ids}}
                 }
               }
-          }}    
+          }}
     q={"query": {"terms": { "":ds }}}
     es = Elasticsearch([{'host': 'localhost', 'port': 9200}])
     for i in ids:
@@ -131,7 +128,6 @@ def deleteKids(ids):
             es.delete(index='whg', doc_type='place', id=i)
         except:
             print('failed delete for: ',id)
-            pass
 
 def deleteDataset(ds):
     q={"query": {"match": { "seed_dataset":ds }}}
@@ -139,43 +135,40 @@ def deleteDataset(ds):
         es.delete(es_index='whg', doc_type='place', body=q)
     except:
         print('failed delete for: ',ds)
-        pass
     
 
 
 
 def queryObject(place):
     from datasets.utils import hully
-    qobj = {"place_id":place.id,"src_id":place.src_id,"title":place.title}
-    variants=[]; geoms=[]; types=[]; ccodes=[]; parents=[]; links=[]
-    
-    # ccodes (2-letter iso codes)
-    for c in place.ccodes:
-        ccodes.append(c)
-    qobj['ccodes'] = place.ccodes
-    
-    # types (Getty AAT identifiers)
-    for t in place.types.all():
-        types.append(t.json['identifier'])
+    geoms=[]
+    links=[]
+
+    ccodes = list(place.ccodes)
+    qobj = {
+        "place_id": place.id,
+        "src_id": place.src_id,
+        "title": place.title,
+        'ccodes': place.ccodes,
+    }
+    types = [t.json['identifier'] for t in place.types.all()]
     qobj['types'] = types
-    
-    # names
-    for name in place.names.all():
-        variants.append(name.toponym)
+
+    variants = [name.toponym for name in place.names.all()]
     qobj['variants'] = variants
-    
-    # parents
-    for rel in place.related.all():
-        if rel.json['relation_type'] == 'gvp:broaderPartitive':
-            parents.append(rel.json['label'])
+
+    parents = [
+        rel.json['label']
+        for rel in place.related.all()
+        if rel.json['relation_type'] == 'gvp:broaderPartitive'
+    ]
     qobj['parents'] = parents
-    
+
     # links
     if len(place.links.all()) > 0:
-        for l in place.links.all():
-            links.append(l.json['identifier'])
+        links.extend(l.json['identifier'] for l in place.links.all())
         qobj['links'] = links
-    
+
     # geoms
     if len(place.geoms.all()) > 0:
         geom = place.geoms.all()[0].json
@@ -183,7 +176,7 @@ def queryObject(place):
             qobj['geom'] = place.geoms.first().json
         elif geom['type'] == 'MultiLineString':
             qobj['geom'] = hully(geom)
-    
+
     return qobj
 
 def makeSeed(place, dataset, whgid):

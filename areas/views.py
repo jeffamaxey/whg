@@ -26,10 +26,7 @@ class AreaCreateView(CreateView):
         kwargs = super(AreaCreateView, self).get_form_kwargs()
         redirect = self.request.GET.get('next')
         print('redirect in get_form_kwargs():',redirect)
-        if redirect != None:
-            self.success_url = redirect
-        else:
-            self.success_url = '/dashboard'
+        self.success_url = redirect if redirect != None else '/dashboard'
         #print('cleaned_data in get_form_kwargs()',form.cleaned_data)
         if redirect:
             if 'initial' in kwargs.keys():
@@ -41,12 +38,11 @@ class AreaCreateView(CreateView):
     # ** END
     
     def form_valid(self, form):
-        context={}
         if form.is_valid():
             print('form is valid')
         else:
             print('form not valid', form.errors)
-            context['errors'] = form.errors
+            context = {'errors': form.errors}
         return super().form_valid(form)
 
     def get_context_data(self, *args, **kwargs):
@@ -63,16 +59,15 @@ class AreaDetailView(UpdateView):
 
     def get_success_url(self):
         id_ = self.kwargs.get("id")
-        return '/areas/'+str(id_)+'/detail'
+        return f'/areas/{str(id_)}/detail'
 
     def form_valid(self, form):
-        context={}
         if form.is_valid():
             print('form is valid')
             print('cleaned_data: before ->', form.cleaned_data)
         else:
             print('form not valid', form.errors)
-            context['errors'] = form.errors
+            context = {'errors': form.errors}
         return super().form_valid(form)
 
     def get_object(self):

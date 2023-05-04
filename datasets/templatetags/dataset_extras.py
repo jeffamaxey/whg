@@ -23,11 +23,9 @@ def parsedict(value,key):
 
 @register.filter
 def parse(obj,key):
-    if '/' in key:
-        key=key.split('/')
-        return obj[key[0]][key[1]]
-    else:
+    if '/' not in key:
         return obj[key]
-    """returns value for given key or sub-key"""
+    key=key.split('/')
+    return obj[key[0]][key[1]]
     # obj = json.loads(value.replace("'",'"'))
     # return obj[key]

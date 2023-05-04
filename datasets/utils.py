@@ -55,7 +55,7 @@ def validate_csv(infile, username):
     result['delimiter'] = 'tab'
 
   reader = csv.reader(infile, dialect)
-  result['count'] = sum(1 for row in reader)
+  result['count'] = len(reader)
 
   # get & test header (not field contents yet)
   infile.seek(0)
@@ -63,7 +63,7 @@ def validate_csv(infile, username):
   result['columns'] = header
 
   # TODO: specify which is missing
-  if not len(set(header) & set(required)) == 3:
+  if len(set(header) & set(required)) != 3:
     result['errors'].append({'req':'missing a required column (id,name,name_src)'})
     return result
   if ('min' in header and 'max' not in header) \
@@ -100,8 +100,7 @@ class HitRecord(object):
 
 def aat_lookup(id):
   try:
-    label = aat.types[id]['term_full']
-    return label
+    return aat.types[id]['term_full']
   except:
     print(id,' broke it')
     print("error:", sys.exc_info())        
@@ -113,15 +112,9 @@ def hully(g_list):
   if g_list[0]['type'] == 'Point':
     # 1 or more points >> make hull; if not near 180 deg., add buffer(1) (~200km @ 20deg lat)
     hull=MultiPoint([GEOSGeometry(json.dumps(g)) for g in g_list]).convex_hull
-    l = list(set([g_list[0]['coordinates'][0] for c in g_list[0]]))
-    if len([i for i in l if i >= 175]) == 0:
-      hull = hull.buffer(1)
-    else:
-      hull = hull.buffer(0.1)
-  elif g_list[0]['type'] == 'MultiLineString':
-    hull=GeometryCollection([GEOSGeometry(json.dumps(g)) for g in g_list]).convex_hull
+    l = list({g_list[0]['coordinates'][0] for _ in g_list[0]})
+    hull = hull.buffer(0.1) if [i for i in l if i >= 175] else hull.buffer(1)
   else:
-    # now only linestrings and multiple multipolygons -> simple convex_hull (unions are precise but bigger)
     hull=GeometryCollection([GEOSGeometry(json.dumps(g)) for g in g_list]).convex_hull
   return json.loads(hull.geojson)
 
@@ -134,8 +127,7 @@ def parse_wkt(g):
 def myteam(me):
   myteam=[]
   for g in me.groups.all():
-    for u in g.user_set.all():
-      myteam.append(u)
+    myteam.extend(iter(g.user_set.all()))
   return myteam
 
 def parsejson(value,key):
@@ -154,12 +146,10 @@ def bestParent(qobj, flag=False):
   best = []
   # merge parent country/ies & parents
   if len(qobj['countries']) > 0:
-    for c in qobj['countries']:
-      best.append(parents.ccodes[0][c]['tgnlabel'])
+    best.extend(parents.ccodes[0][c]['tgnlabel'] for c in qobj['countries'])
   if len(qobj['parents']) > 0:
-    for p in qobj['parents']:
-      best.append(p)
-  if len(best) == 0:
+    best.extend(iter(qobj['parents']))
+  if not best:
     best = ['World']
   return best
 
@@ -178,11 +168,11 @@ def fixName(toponym):
   r3 = re.compile(r"(.*?), Cape")
   r4 = re.compile(r"^'")
   if bool(re.search(r1,toponym)):
-    search_name = "Gulf of " + re.search(r1,toponym).group(1)
+    search_name = f"Gulf of {re.search(r1, toponym).group(1)}"
   if bool(re.search(r2,toponym)):
-    search_name = "Sea of " + re.search(r2,toponym).group(1)
+    search_name = f"Sea of {re.search(r2, toponym).group(1)}"
   if bool(re.search(r3,toponym)):
-    search_name = "Cape " + re.search(r3,toponym).group(1)
+    search_name = f"Cape {re.search(r3, toponym).group(1)}"
   if bool(re.search(r4,toponym)):
     search_name = toponym[1:]
   return search_name if search_name != toponym else toponym
@@ -219,13 +209,7 @@ def classy(gaz, typeArray):
   elif gaz == "dbp":
     t = classes['dbpedia']
     default = 'Place'
-    for k,v in t.items():
-      # is any Black type in dbp array?
-      # TOD: this is crap logic, fix it
-      if not set(typeArray).isdisjoint(t[k]):
-        types.append(k)
-      #else:
-        #types.append(default)
-  if len(types) == 0:
+    types.extend(k for k, v in t.items() if not set(typeArray).isdisjoint(t[k]))
+  if not types:
     types.append(default)
   return list(set(types))

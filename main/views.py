@@ -32,10 +32,7 @@ class CommentCreateView(BSModalCreateView):
         kwargs = super(CommentCreateView, self).get_form_kwargs()
         redirect = self.request.GET.get('next')
         print('redirect in get_form_kwargs():',redirect)
-        if redirect != None:
-            self.success_url = redirect
-        else:
-            self.success_url = '/dashboard'
+        self.success_url = redirect if redirect != None else '/dashboard'
         #print('cleaned_data in get_form_kwargs()',form.cleaned_data)
         if redirect:
             if 'initial' in kwargs.keys():

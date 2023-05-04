@@ -21,7 +21,7 @@ def index_traces(trdata):
     except:
       print(rec['id'], ' broke it')
       print("error:", sys.exc_info())
-  print(str(count)+' records indexed')
+  print(f'{str(count)} records indexed')
 
 def init():
   global es, idx, rows
@@ -46,7 +46,7 @@ def init():
     print(ex)
   try:
     es.indices.create(index=idx, ignore=400, body=mappings)
-    print ('index "'+idx+'" created')
+    print(f'index "{idx}" created')
   except Exception as ex:
     print(ex)
 

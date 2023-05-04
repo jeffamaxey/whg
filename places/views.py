@@ -24,7 +24,7 @@ class PlacePortalView(DetailView):
 
   def get_success_url(self):
     id_ = self.kwargs.get("id")
-    return '/places/'+str(id_)+'/detail'
+    return f'/places/{str(id_)}/detail'
 
   def get_context_data(self, *args, **kwargs):
     context = super(PlacePortalView, self).get_context_data(*args, **kwargs)
@@ -40,9 +40,7 @@ class PlacePortalView(DetailView):
     # get child record ids from index
     q = {"query": {"parent_id": {"type": "child","id": id_ }}}
     children = es.search(index='whg', doc_type='place', body=q)['hits']
-    for hit in children['hits']:
-      ids.append(int(hit['_id']))
-
+    ids.extend(int(hit['_id']) for hit in children['hits'])
     # database records for parent + children into 'payload'
     qs=Place.objects.filter(id__in=ids)
     #print("id_,ids, qs",id_,ids,qs)
@@ -66,7 +64,7 @@ class PlacePortalView(DetailView):
         "depictions":[depict.json for depict in place.depictions.all()]
       }
       context['payload'].append(record)
-      
+
     # get traces
     qt = {"query": {"bool": {"must": [{"match":{"body.whg_id": id_ }}]}}}
     trace_hits = es.search(index='traces01', doc_type='trace', body=qt)['hits']['hits']
@@ -79,9 +77,9 @@ class PlacePortalView(DetailView):
         'body':next((x for x in h['_source']['body'] if x['whg_id'] == id_), None),
         'bodycount':len(h['_source']['body'])
       })
-    
-    print('context payload',str(context['payload']))
-    print('context traces',str(context['traces']))
+
+    print('context payload', context['payload'])
+    print('context traces', context['traces'])
     return context
 
 class PlaceContribView(DetailView):
@@ -89,7 +87,7 @@ class PlaceContribView(DetailView):
 
   def get_success_url(self):
     id_ = self.kwargs.get("id")
-    return '/contrib/'+str(id_)+'/detail'
+    return f'/contrib/{str(id_)}/detail'
 
   def get_object(self):
     print('kwargs:',self.kwargs)
@@ -112,5 +110,5 @@ class PlaceContribView(DetailView):
     context['depictions'] = place.depictions.all()
 
     context['spine'] = spinedata
-    print('place context',str(context))
+    print('place context', context)
     return context

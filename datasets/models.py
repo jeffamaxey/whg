@@ -62,7 +62,7 @@ class Dataset(models.Model):
     @property
     def tasks(self):
         from django_celery_results.models import TaskResult
-        return TaskResult.objects.all().filter(task_args = '['+str(self.id)+']')
+        return TaskResult.objects.all().filter(task_args=f'[{str(self.id)}]')
 
     class Meta:
         managed = True

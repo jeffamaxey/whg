@@ -4,20 +4,20 @@ import json, codecs
 # working out geo_shape indexing
 def init_geotest():
     global es, idx, rows
-    idx = 'geotest' 
+    idx = 'geotest'
     import json, codecs, os
     from elasticsearch import Elasticsearch
     es = Elasticsearch([{'host': 'localhost', 'port': 9200}])
     os.chdir('/Users/karlg/Documents/Repos/_whgdata')
     mappings = codecs.open('data/elastic/mappings/mappings_geo2.json', 'r', 'utf8').read()
-    
+
     try:
         es.indices.delete(idx)
     except Exception as ex:
         print(ex)
     try:
         es.indices.create(index=idx, ignore=400, body=mappings)
-        print ('index "'+idx+'" created')
+        print(f'index "{idx}" created')
     except Exception as ex:
         print(ex)
 init_geotest()
@@ -36,8 +36,6 @@ res = es.index(index='geotest', doc_type='place', id=98767, body=plus_obj)
 idx="whg_flat"
 def findName():
     name = input('name [Calusa]: ') or 'Calusa'
-    #print('name: ',name)
-    all_hits=[]
     q_suggest = { 
         "suggest":{"suggest":{"prefix":name,"completion":{"field":"suggest"}}}
     }
@@ -46,6 +44,8 @@ def findName():
     hits = res['suggest']['suggest'][0]['options']
     #print('hits:',hits)
     if len(hits) > 0:
+        #print('name: ',name)
+        all_hits=[]
         for h in hits:
             hit_id = h['_id']
             if 'parent' in h['_source']['relation'].keys():
@@ -65,10 +65,9 @@ def findName():
                 res = es.search(index='whg_flat', doc_type='place', body=q_parent)
                 if len(res['hits']['hits']) > 0:
                     #print('parent has kids:',str(res['hits']))
-                    for i in res['hits']['hits']:
-                        all_hits.append(i['_source'])
+                    all_hits.extend(i['_source'] for i in res['hits']['hits'])
         print(json.dumps(all_hits,indent=2))
-        print('got '+str(len(all_hits))+' results, like any?\n')
+        print(f'got {len(all_hits)}' + ' results, like any?\n')
     else:
         print('got nothing for that string, sorry!')
 

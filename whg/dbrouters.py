@@ -5,15 +5,7 @@ class MyDBRouter(object):
 
     #
     def db_for_read(self, model, **hints):
-        if model in (Place, Dataset):
-            return 'whgdata'
-        else:
-            return 'default'
-        return None
+        return 'whgdata' if model in (Place, Dataset) else 'default'
 
     def db_for_write(self, model, **hints):
-        if model in (Place, Dataset):
-            return 'whgdata'
-        else:
-            return 'default'
-        return None
+        return 'whgdata' if model in (Place, Dataset) else 'default'

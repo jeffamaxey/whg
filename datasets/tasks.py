@@ -24,40 +24,41 @@ es = Elasticsearch([{'host': 'localhost', 'port': 9200}])
 ##
 
 def types(hit):
-  type_array = []
-  for t in hit["_source"]['types']:
-    if bool(t['placetype'] != None):
-      type_array.append(t['placetype']+', '+str(t['display']))
-  return type_array
+  return [
+      t['placetype'] + ', ' + str(t['display'])
+      for t in hit["_source"]['types'] if t['placetype'] != None
+  ]
 
 def names(hit):
-  name_array = []
-  for t in hit["_source"]['names']:
-    if bool(t['name'] != None):
-      name_array.append(t['name']+', '+str(t['display']))
-  return name_array
+  return [
+      t['name'] + ', ' + str(t['display']) for t in hit["_source"]['names']
+      if t['name'] != None
+  ]
 
 def toGeoJSON(hit):
   src = hit['_source']
-  feat = {"type": "Feature", "geometry": src['location'],
-            "aatid": hit['_id'], "tgnid": src['tgnid'],
-            "properties": {"title": src['title'], "parents": src['parents'], "names": names(hit), "types": types(hit) } }
-  return feat
+  return {
+      "type": "Feature",
+      "geometry": src['location'],
+      "aatid": hit['_id'],
+      "tgnid": src['tgnid'],
+      "properties": {
+          "title": src['title'],
+          "parents": src['parents'],
+          "names": names(hit),
+          "types": types(hit),
+      },
+  }
 
 def reverse(coords):
-  fubar = [coords[1],coords[0]]
-  return fubar
+  return [coords[1],coords[0]]
 
 
 def parseWhen(when):
   print('when to parse',when)
-  timespan = 'parse me now'
-  return timespan
+  return 'parse me now'
 def ccDecode(codes):
-  countries=[]
-  for c in codes:
-    countries.append(ccodes[0][c]['gnlabel'])
-  return countries
+  return [ccodes[0][c]['gnlabel'] for c in codes]
 
 def maxID(es):
   q={"query": {"bool": {"must" : {"match_all" : {}} }},
@@ -77,14 +78,16 @@ def normalize(h,auth):
   if auth == 'whg':
     try:
       rec = HitRecord(h['whg_id'], h['place_id'], h['dataset'], h['src_id'], h['title'])
-    
+
       # add elements if non-empty in index record
       rec.variants = [n['toponym'] for n in h['names']] # always >=1 names
       rec.types = [t['label']+' ('+t['src_label']  +')' if 'src_label' in t.keys() else '' \
                   for t in h['types']] if len(h['types']) > 0 else []
       rec.ccodes = ccDecode(h['ccodes']) if len(h['ccodes']) > 0 else []
-      rec.parents = ['partOf: '+r.label+' ('+parseWhen(r['when']['timespans'])+')' for r in h['relations']] \
-                  if 'relations' in h.keys() and len(h['relations']) > 0 else []
+      rec.parents = ([
+          f'partOf: {r.label} (' + parseWhen(r['when']['timespans']) + ')'
+          for r in h['relations']
+      ] if 'relations' in h.keys() and len(h['relations']) > 0 else [])
       rec.descriptions = h['descriptions'] if len(h['descriptions']) > 0 else []
       rec.geoms = [{
         "type":h['geoms'][0]['location']['type'], 
@@ -92,16 +95,12 @@ def normalize(h,auth):
         "id":h['place_id'], \
         "ds":"whg"}] \
         if len(h['geoms'])>0 else []
-      #rec.geoms = [g['location'] for g in h['geoms']] \
-                  #if len(h['geoms']) > 0 else []
       rec.minmax = dict(sorted(h['minmax'].items(),reverse=True)) if len(h['minmax']) > 0 else []
-      #rec.whens = [parseWhen(t) for t in h['timespans']] \
-                  #if len(h['timespans']) > 0 else []
       rec.links = [l['type']+': '+l['identifier'] for l in h['links']] \
                   if len(h['links']) > 0 else []
     except:
       print("normalize(whg) error:", h['place_id'], sys.exc_info())    
-  
+
   elif auth == 'tgn':
     # h=hit['_source']; ['tgnid', 'title', 'names', 'suggest', 'types', 'parents', 'note', 'location']
     # whg_id, place_id, dataset, src_id, title
@@ -148,16 +147,19 @@ def get_bounds_filter(bounds,idx):
   area = Area.objects.get(id = id)
   # TODO: area always a hull polygon now; test MultiPolygon
   geofield = "geoms.location" if idx == 'whg' else "location"
-  filter = { "geo_shape": {
-    geofield: {
-        "shape": {
-          "type": "polygon" if areatype == 'userarea' else "multipolygon",
-          "coordinates": area.geojson['coordinates']
-        },
-        "relation": "intersects" if idx=='whg' else 'within' # within | intersects | contains
+  return {
+      "geo_shape": {
+          geofield: {
+              "shape": {
+                  "type":
+                  "polygon" if areatype == 'userarea' else "multipolygon",
+                  "coordinates": area.geojson['coordinates'],
+              },
+              "relation": "intersects"
+              if idx == 'whg' else 'within',  # within | intersects | contains
+          }
       }
-  }} 
-  return filter
+  }
 
 # queries > result_obj
 def es_lookup_tgn(qobj, *args, **kwargs):
@@ -311,29 +313,27 @@ def align_tgn(pk, *args, **kwargs):
     #place=get_object_or_404(Place,id=124925) # Abenaki (dplace)
     #place=get_object_or_404(Place, id=125681) # Chukchi (dplace)
     count +=1
-    qobj = {"place_id":place.id,"src_id":place.src_id,"title":place.title}
     [variants,geoms,types,ccodes,parents]=[[],[],[],[],[]]
 
     # ccodes (2-letter iso codes)
-    for c in place.ccodes:
-      ccodes.append(c)
-    qobj['countries'] = place.ccodes
-
+    ccodes.extend(iter(place.ccodes))
     # types (Getty AAT identifiers)
-    for t in place.types.all():
-      types.append(t.json['identifier'])
-    qobj['placetypes'] = types
-
+    types.extend(t.json['identifier'] for t in place.types.all())
+    qobj = {
+        "place_id": place.id,
+        "src_id": place.src_id,
+        "title": place.title,
+        'countries': place.ccodes,
+        'placetypes': types,
+    }
     # names
-    for name in place.names.all():
-      variants.append(name.toponym)
+    variants.extend(name.toponym for name in place.names.all())
     qobj['variants'] = variants
 
     # parents
     # TODO: other relations
-    for rel in place.related.all():
-      if rel.json['relation_type'] == 'gvp:broaderPartitive':
-        parents.append(rel.json['label'])
+    parents.extend(rel.json['label'] for rel in place.related.all()
+                   if rel.json['relation_type'] == 'gvp:broaderPartitive')
     qobj['parents'] = parents
 
     # align_whg geoms
@@ -341,13 +341,13 @@ def align_tgn(pk, *args, **kwargs):
       g_list =[g.json for g in place.geoms.all()]
       # make everything a simple polygon hull for spatial filter
       qobj['geom'] = hully(g_list)
-          
+
     ## run pass1-pass3 ES queries
     try:
       result_obj = es_lookup_tgn(qobj, bounds=bounds)
     except:
       print('es_lookup_tgn failed:',sys.exc_info())
-      
+
     if result_obj['hit_count'] == 0:
       count_nohit +=1
       nohits.append(result_obj['missed'])
@@ -563,7 +563,7 @@ def align_whg(pk, *args, **kwargs):
   if ds.id==1:
     errors_black = codecs.open('err_black-whg.txt', mode='w', encoding='utf8')
     esInit('whg')
-  
+
   # dummies for testing
   #bounds = {'type': ['userarea'], 'id': ['0']}
   #bounds = {'type': ['region'], 'id': ['76']}
@@ -589,38 +589,35 @@ def align_whg(pk, *args, **kwargs):
     #place=get_object_or_404(Place,id=84778) # Baalbek/Heliopolis (lb)
     #place=get_object_or_404(Place,id=84777) # Heliopolis (eg)
     count +=1
-    qobj = {"place_id":place.id, "src_id":place.src_id, "title":place.title}
-    links=[]; ccodes=[]; types=[]; variants=[]; parents=[]; geoms=[]; 
+    types=[]
+    geoms=[]; 
 
-    ## links
-    for l in place.links.all():
-      links.append(l.json['identifier'])
-    qobj['links'] = links
-
-    ## ccodes (2-letter iso codes)
-    for c in place.ccodes:
-      ccodes.append(c)
-    qobj['countries'] = list(set(place.ccodes))
-
+    links = [l.json['identifier'] for l in place.links.all()]
+    ccodes = list(place.ccodes)
+    qobj = {
+        "place_id": place.id,
+        "src_id": place.src_id,
+        "title": place.title,
+        'links': links,
+        'countries': list(set(place.ccodes)),
+    }
     ## types (Getty AAT identifiers)
     ## account for 'null' in 97 black records
     for t in place.types.all():
-      if t.json['identifier'] != None:
-        types.append(t.json['identifier'])
-      else:
+      if t.json['identifier'] is None:
         # inhabited place, cultural group, site
         types.extend(['aat:300008347','aat:300387171','aat:300000809'])
+      else:
+        types.append(t.json['identifier'])
     qobj['placetypes'] = types
 
-    ## names
-    for name in place.names.all():
-      variants.append(name.toponym)
+    variants = [name.toponym for name in place.names.all()]
     qobj['variants'] = variants
 
-    ## parents
-    for rel in place.related.all():
-      if rel.json['relation_type'] == 'gvp:broaderPartitive':
-        parents.append(rel.json['label'])
+    parents = [
+        rel.json['label'] for rel in place.related.all()
+        if rel.json['relation_type'] == 'gvp:broaderPartitive'
+    ]
     qobj['parents'] = parents
 
     ## geoms
@@ -648,17 +645,17 @@ def align_whg(pk, *args, **kwargs):
         parent_obj['whg_id']=whg_id
         # add its own names to the suggest field
         for n in parent_obj['names']:
-          parent_obj['suggest']['input'].append(n['toponym']) 
+          parent_obj['suggest']['input'].append(n['toponym'])
         #index it
         try:
           res = es.index(index='whg', doc_type='place', id=str(whg_id), body=json.dumps(parent_obj))
           count_seeds +=1
         except:
-          print('failed indexing '+str(place.id), parent_obj)
+          print(f'failed indexing {str(place.id)}', parent_obj)
           print(sys.exc_info[0])
           errors_black.write(str({"pid":place.id, "title":place.title})+'\n')
         print('created parent:',result_obj['place_id'],result_obj['title'])
-      #nohits.append(result_obj['missed'])
+          #nohits.append(result_obj['missed'])
     else:
       # create hit record for review process
       count_hit +=1

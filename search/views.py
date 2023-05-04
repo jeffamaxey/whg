@@ -16,27 +16,30 @@ def fetchArea(request):
 def makeGeom(pid,geom):
   # TODO: account for non-point
   geomset = []
-  if len(geom) > 0:    
-    for g in geom:
-      geomset.append(
-        {"type":g['location']['type'],"coordinates":g['location']['coordinates'],"properties":{"pid": pid}}
-      )
+  if len(geom) > 0:  
+    geomset.extend({
+        "type": g['location']['type'],
+        "coordinates": g['location']['coordinates'],
+        "properties": {
+            "pid": pid
+        },
+    } for g in geom)
   return geomset
 
 # make stuff available in autocomplete dropdown
 def suggestionItem(s):
   #print('sug geom',s['geometries'])
   print('sug', s)
-  item = { "name":s['title'],
-           "type":s['types'][0]['label'],
-             "whg_id":s['whg_id'],
-             "pid":s['place_id'],
-             "variants":[n for n in s['suggest']['input'] if n != s['title']],
-             "dataset":s['dataset'],
-             "ccodes":s['ccodes'],
-             "geom": makeGeom(s['place_id'],s['geoms'])
-             }
-  return item
+  return {
+      "name": s['title'],
+      "type": s['types'][0]['label'],
+      "whg_id": s['whg_id'],
+      "pid": s['place_id'],
+      "variants": [n for n in s['suggest']['input'] if n != s['title']],
+      "dataset": s['dataset'],
+      "ccodes": s['ccodes'],
+      "geom": makeGeom(s['place_id'], s['geoms']),
+  }
 
 def nameSuggest(idx,doctype,q_initial):
   # return only parents; children will be retrieved in portal page
